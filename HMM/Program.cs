@@ -22,13 +22,15 @@ namespace HMM
         {
             // HMMクラスの変数を宣言。
             HMM model;
+            int index = 0;
             // try-catch文
             // 例外発生時にcatch文が実行される。
             try
             {
                 // outキーワードは参照渡しを指示するキーワードであるが、用途が限定されている。
                 // outキーワードが付いた変数は呼び出し元で初期化する必要がなく、必ずメソッド側で値が設定されることが約束される。
-                ParseParameter(out model, args[0]);
+                ParseParameter(out model, args[index]);
+                index++;
             }
             catch
             {
@@ -37,11 +39,14 @@ namespace HMM
             }
 
             string[] sequenceArray;
+            string[] fastas = new string[args.Length - index];
+            // 配列fastasに、コマンドライン引数から該当するFASTAファイルパスをコピーする。
+            System.Array.Copy(args, index, fastas, 0, args.Length - index);
             // try-catch文
             // 例外発生時にcatch文が実行される。
             try
             {
-                sequenceArray = ParseFastaFiles(args);
+                sequenceArray = ParseFastaFiles(fastas);
             }
             catch
             {
@@ -223,9 +228,10 @@ namespace HMM
         }
 
         /// <summary>
-        /// 2番目以降にFASTAファイルパスの格納されたコマンドライン引数をそのまま受け取り、そこから配列を読み取り、string型の配列にして返す。
+        /// FASTAファイルパスの格納された引数を受け取り、そこから配列を読み取り、string型の配列にして返す。
         /// </summary>
-        /// <param name="args">コマンドライン引数</param>
+        /// <param name="args">ファイルパスの配列</param>
+        /// <remarks>Ver.1.1 : 空行を読み飛ばすよう変更</remarks>
         static string[] ParseFastaFiles(string[] args)
         {
             // string型のリストを宣言。C++でのVectorと同じ。
@@ -241,7 +247,7 @@ namespace HMM
             // 例外発生時にcatch文が実行され、例外の有無に関わらずfinally文が実行される。
             try
             {
-                for (int i = 1; i < args.Length; i++)
+                for (int i = 0; i < args.Length; i++)
                 {
                     stream = new System.IO.StreamReader(args[i]);
                     // FASTA形式ファイルの最初の1行を読み飛ばす。
@@ -251,6 +257,11 @@ namespace HMM
                     while (!stream.EndOfStream)
                     {
                         buffer = stream.ReadLine();
+                        if (buffer.Length == 0)
+                        {
+                            // 空行を読み飛ばす。
+                            continue;
+                        }
                         if (buffer[0] == '>')
                         {
                             // '>'を行頭に見つけたら読み取った配列をsequenceListに追加し、新しく読み込みをseqに貯める。
@@ -268,16 +279,19 @@ namespace HMM
             }
             catch (Exception e)
             {
+                // 例外処理
                 Console.WriteLine("FASTA file : {0}", e.Message);
                 throw;
             }
             finally
             {
+                // 必ず行われる処理
                 if (stream != null)
                 {
                     stream.Close();
                 }
             }
+            // リストを通常の配列に変換して返す。
             return sequenceList.ToArray();
         }
     }
