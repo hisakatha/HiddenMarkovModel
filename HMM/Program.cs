@@ -87,6 +87,7 @@ namespace HMM
                     PrintArray(model.Viterbi(sequenceArray[i]));
                 }
             }
+            /*
             Console.WriteLine("Baum-Welch algorithm start..." + (verbose ? " (Change of sum of ln P(x^j) are shown.)" : ""));
             model.BaumWelch(sequenceArray, 0.0001, verbose);
             Console.WriteLine("Result parameters are below:");
@@ -97,6 +98,7 @@ namespace HMM
                 Console.WriteLine("An estimated sequence of hidden states for input{0} :", i + 1);
                 PrintArray(model.Viterbi(sequenceArray[i]));
             }
+             */
             //Console.ReadKey(true);
             return;
         }
