@@ -13,6 +13,11 @@ namespace HMM
     /// </summary>
     class Program
     {
+        // エラー時に表示する利用方法の文字列。
+        static readonly string usage = "Usage: command [-l block-length] {parameter file} {FASTA file(s)}..."
+            + Environment.NewLine + "Options:" + Environment.NewLine + "\t-l block-length\t\tDo acceleration by compression with specified block length."
+            + Environment.NewLine + "\t\t\t\tIf not specified, no compressoins.";
+
         /// <summary>
         /// 1つ目のファイルパスからHMMのパラメータを読み取り、HMMを作成し、2つ目のfasta形式のファイルパスから観測文字列を読み取る。
         /// このHMMに観測文字列を与えることで、隠れ状態の推定などを行う。
@@ -23,6 +28,25 @@ namespace HMM
             // HMMクラスの変数を宣言。
             HMM model;
             int index = 0;
+            int blockLength = 0;
+            if (args[index].CompareTo("-l") == 0)
+            {
+                try
+                {
+                    blockLength = int.Parse(args[index + 1]);
+                }
+                catch (FormatException e)
+                {
+                    Console.WriteLine(e.Message + ": block-lengthには数を入力してください。");
+                    Console.WriteLine(usage);
+                    return;
+                }
+                if (blockLength < 0)
+                {
+                    Console.WriteLine("Warning: block-length should be positive.: No compressions.");
+                }
+                index += 2;
+            }
             // try-catch文
             // 例外発生時にcatch文が実行される。
             try
