@@ -70,7 +70,7 @@ namespace HMM
             const int repeatNumber = 10;
             // 通常のViterbiアルゴリズムでの実行時間を格納する配列。
             long[] normalTimes = new long[sequenceArray.Length];
-            // 圧縮を用いたViterbiアルゴリズムでの実行時間を格納するQueue。
+            // 圧縮を用いたViterbiアルゴリズムでの実行時間を格納するQueueの配列。
             Queue<long>[] times = new Queue<long>[sequenceArray.Length];
             for (int i = 0; i < times.Length; i++)
             {
@@ -80,7 +80,9 @@ namespace HMM
             System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
             for (int i = 0; i < sequenceArray.Length; i++)
             {
+                // ストップウォッチのリセット
                 timer.Reset();
+                // 通常のViterbiアルゴリズムの時間計測。
                 for (int t = 0; t < repeatNumber; t++)
                 {
                     timer.Start();
@@ -89,10 +91,13 @@ namespace HMM
                 }
                 normalTimes[i] = timer.ElapsedMilliseconds;
                 
+                // 現在の塩基配列でのブロック長の上限を計算する。
                 int maxBlockLength = (int)System.Math.Ceiling(System.Math.Log(sequenceArray[i].Length, model.AlphabetSize));
                 for (blockLength = 2; blockLength <= maxBlockLength; blockLength++)
                 {
+                    // ストップウォッチのリセット
                     timer.Reset();
+                    // 現在のブロック長での圧縮を用いたViterbiアルゴリズムの時間計測。
                     for (int t = 0; t < repeatNumber; t++)
                     {
                         timer.Start();
@@ -103,18 +108,23 @@ namespace HMM
                 }
             }
 
+            // 配列timesの要素Queue<long>をelementとして、そこに要素が1つでもあればwhileループを回す。
+            // メソッドAnyはtimesの要素をラムダ式に適用し、1つでもtrueを返すものであれば、返り値がtrueとなるLinqメソッド。
             while (times.Any((Queue<long> element) => (element.Count > 0)))
             {
+                // 各塩基配列に対して、
                 for (int i = 0; i < sequenceArray.Length; i++)
                 {
                     if (times[i].Count > 0)
                     {
+                        // キューに要素が入っていればdequeueして時間比を計算する。
                         Console.Write("{0:G5}", (double)normalTimes[i] / (double)times[i].Dequeue());
                     }
                     else
                     {
                         Console.Write("N/A");
                     }
+                    // tabを追記。
                     Console.Write("\t");
                 }
                 Console.WriteLine("");
@@ -460,13 +470,25 @@ namespace HMM
             return;
         }
 
+        /// <summary>
+        /// 文字列sequenceの位置startIndexから長さlengthの部分文字列について、
+        /// メンバ変数alphabetでの値に基づいて辞書式順序となるような整数インデックスを返す。
+        /// 参照できる部分文字列が指定された長さより短いときは、
+        /// 指定された長さの部分文字列集合の中で、参照できる部分文字列がprefixとして初めて現れるインデックスを返す。
+        /// </summary>
+        /// <param name="sequence">部分文字列を含んだ文字列</param>
+        /// <param name="startIndex">部分文字列の先頭のインデックス</param>
+        /// <param name="length">部分文字列の長さ</param>
+        /// <returns>部分文字列の、メンバ変数alphabetに対する辞書式順序インデックス</returns>
         int SubstringToIndex(string sequence, int startIndex, int length)
         {
             int index = 0;
+            // 指定された長さだけ文字列が存在するとき。
             for (int i = startIndex;  i < sequence.Length && i < startIndex + length; i++)
             {
                 index = index * alphabetSize + System.Array.IndexOf<char>(alphabet, sequence[i]);
             }
+            // 指定された長さの文字列が存在しないとき。
             for (int i = sequence.Length; i < startIndex + length; i++)
             {
                 index = index * alphabetSize;
@@ -474,6 +496,12 @@ namespace HMM
             return index;
         }
 
+        /// <summary>
+        /// 整数に限定された累乗を返す。
+        /// </summary>
+        /// <param name="x">底</param>
+        /// <param name="y">指数</param>
+        /// <returns>累乗の値</returns>
         static int PowerInt(int x, int y)
         {
             int result = 1;
@@ -484,102 +512,44 @@ namespace HMM
             return result;
         }
 
+        /// <summary>
+        /// Method of Four Russiansにより圧縮された文字列を作成することで、emissionに対するViterbi pathを計算する。
+        /// </summary>
+        /// <param name="emission">観測文字列</param>
+        /// <param name="blockLength">圧縮時のブロック長</param>
+        /// <param name="debugmode">[Optional]true時に最終的なViterbi変数の対数値を表示する。既定値はfalse</param>
+        /// <returns></returns>
         public int[] ViterbiWithCompression(string emission, int blockLength, bool debugmode = false)
         {
             // int patternNumber = PowerInt(alphabetSize, blockLength);
             // ブロックの作成
-            double[][][] blockLogViterbi = new double[alphabetSize][][];
-            int[][][][] blockTrace = new int[alphabetSize][][][];
-            for (int i = 0; i < alphabetSize; i++)
-            {
-                // モデルには必ず初期状態が含まれているので、それを除いておく。
-                blockLogViterbi[i] = new double[stateNumber - 1][];
-                blockTrace[i] = new int[stateNumber - 1][][];
-                for (int j = 0; j < stateNumber - 1; j++)
-                {
-                    blockLogViterbi[i][j] = new double[stateNumber - 1];
-                    blockTrace[i][j] = new int[stateNumber - 1][];
-                }
-            }
-            // 初期化
-            for (int p = 0; p < alphabetSize; p++)
-            {
-                for (int i = 0; i < stateNumber - 1; i++)
-                {
-                    for (int j = 0; j < stateNumber - 1; j++)
-                    {
-                        blockLogViterbi[p][i][j] = System.Math.Log(emissionProbability[p][i]) + System.Math.Log(transitionProbability[i + 1][j + 1]);
-                        blockTrace[p][i][j] = new int[] { i };
-                    }
-                }
-            }
-            // 再帰処理
-            for (int t = 2; t <= blockLength; t++)
-            {
-                int subpatternNumber = PowerInt(alphabetSize, t);
-                double[][][] previousBlockLogViterbi = blockLogViterbi;
-                int[][][][] previousBlockTrace = blockTrace;
-                blockLogViterbi = new double[subpatternNumber][][];
-                blockTrace = new int[subpatternNumber][][][];
-                for (int p = 0; p < subpatternNumber; p++)
-                {
-                    blockLogViterbi[p] = new double[stateNumber - 1][];
-                    blockTrace[p] = new int[stateNumber - 1][][];
-                    for (int i = 0; i < stateNumber - 1; i++)
-                    {
-                        blockLogViterbi[p][i] = new double[stateNumber - 1];
-                        blockTrace[p][i] = new int[stateNumber - 1][];
-                        for (int j = 0; j < stateNumber - 1; j++)
-                        {
-                            blockTrace[p][i][j] = new int[t];
-                            System.Array.Copy(previousBlockTrace[p / alphabetSize][i][j], blockTrace[p][i][j], t - 1);
-                        }
-                    }
-                }
-                for (int p = 0; p < subpatternNumber; p++)
-                {
-                    int letter = p % alphabetSize;
-                    // From state i.
-                    for (int i = 0; i < stateNumber - 1; i++)
-                    {
-                        // To state j.
-                        for (int j = 0; j < stateNumber - 1; j++)
-                        {
-                            double max = double.NegativeInfinity;
-                            int argmax = -1;
-                            for (int k = 0; k < stateNumber - 1; k++)
-                            {
-                                double tmp = System.Math.Log(emissionProbability[letter][j]) + System.Math.Log(transitionProbability[k + 1][j + 1]) + previousBlockLogViterbi[p / alphabetSize][i][k];
-                                if (tmp > max)
-                                {
-                                    max = tmp;
-                                    argmax = k;
-                                }
-                            }
-                            blockLogViterbi[p][i][j] = max;
-                            blockTrace[p][i][j][t - 1] = argmax;
-                        }
-                    }
-                }
-            }
+            double[][][] blockLogViterbi;
+            int[][][][] blockTrace;
+            ComputeBlockLogViterbi(blockLength, out blockLogViterbi, out blockTrace);
 
+            // 隠れ状態列を格納する配列。
             int[] hiddenState = new int[emission.Length + 1];
-            // Viterbi variableの計算
+            // Viterbi variableの計算結果を格納する配列。
             double[] distribution = new double[stateNumber - 1];
             
+            // 初期状態分布から1文字目までのViterbi変数を計算する。
             int firstCharIndex = System.Array.IndexOf<char>(alphabet, emission[0]);
             for (int i = 0; i < distribution.Length; i++)
             {
                 distribution[i] = System.Math.Log(transitionProbability[0][i + 1]) + System.Math.Log(emissionProbability[firstCharIndex][i]);
                 hiddenState[0] = -1;
             }
+            // ブロック長からブロック数を数える。
             int fullBlockCount = (emission.Length - 1) / blockLength;
+            // トレースバック用の配列を用意。
             int[][] trace = new int[fullBlockCount][];
+            // 作成したブロックを用いてViterbi変数を更新する。
             for (int t = 0; t < fullBlockCount; t++)
             {
                 trace[t] = new int[stateNumber - 1];
-                // 2文字目から開始。
+                // ブロックの先頭の位置を求める。2文字目から開始。
                 int position = t * blockLength + 1;
+                // 前回のブロックでのViterbi変数を格納。
                 double[] previousDistribution = distribution;
                 distribution = new double[stateNumber - 1];
                 int index = SubstringToIndex(emission, position, blockLength);
@@ -601,8 +571,7 @@ namespace HMM
                 }
             }
             
-
-            // 余りの処理
+            // ブロックに入らない余りについてViterbi変数を更新する。
             int[][] traceByOne = new int[(emission.Length - 1) % blockLength][];
             for (int i = 0; i < traceByOne.Length; i++)
             {
@@ -633,10 +602,11 @@ namespace HMM
 
             if (debugmode)
             {
+                // 最終的なViterbi変数の配列を表示する。
                 Program.PrintArray<double>(distribution);
             }
 
-            // 終了処理
+            // 終了処理（Viterbi変数が最大となる状態を求める）
             double finalMax = double.NegativeInfinity;
             int finalState = -1;
             for (int k = 0; k < stateNumber - 1; k++)
@@ -648,21 +618,114 @@ namespace HMM
                     finalState = k;
                 }
             }
+            // トレースバックを行い、隠れ状態列を作成する。
             hiddenState[emission.Length] = finalState;
+            // 余りの塩基配列についてトレースバックする。
             for (int position = emission.Length - 1; position >= blockLength * fullBlockCount + 1; position--)
             {
                 hiddenState[position] = traceByOne[position % blockLength - 1][hiddenState[position + 1]];
             }
+            // ブロック部分についてトレースバックする。
             for (int i = trace.Length - 1; i >= 0; i--)
             {
                 int index = SubstringToIndex(emission, i * blockLength + 1, blockLength);
                 System.Array.Copy(blockTrace[index][trace[i][hiddenState[(i + 1) * blockLength + 1]]][hiddenState[(i + 1) * blockLength + 1]], 0, hiddenState, i * blockLength + 1, blockLength);
             }
+            // 初期状態を除いたときにずれた状態の値をもとに戻す。
             for (int i = 0; i < hiddenState.Length; i++)
             {
                 hiddenState[i] += 1;
             }
             return hiddenState;
+        }
+
+        /// <summary>
+        /// アルファベット集合alphabetから、
+        /// 長さblockLengthの全ての部分文字列についてViterbi変数の自然対数値とそれに対応するトレースバックテーブルを作成する。
+        /// </summary>
+        /// <param name="blockLength">ブロック長</param>
+        /// <param name="blockLogViterbi">Viterbi変数の自然対数値が格納される配列</param>
+        /// <param name="blockTrace">各Viterbi変数に対応する隠れ状態列が格納される配列</param>
+        private void ComputeBlockLogViterbi(int blockLength, out double[][][] blockLogViterbi, out int[][][][] blockTrace)
+        {
+            blockLogViterbi = new double[alphabetSize][][];
+            blockTrace = new int[alphabetSize][][][];
+            for (int i = 0; i < alphabetSize; i++)
+            {
+                // モデルには必ず初期状態が含まれているので、それを除いておく。
+                blockLogViterbi[i] = new double[stateNumber - 1][];
+                blockTrace[i] = new int[stateNumber - 1][][];
+                for (int j = 0; j < stateNumber - 1; j++)
+                {
+                    blockLogViterbi[i][j] = new double[stateNumber - 1];
+                    blockTrace[i][j] = new int[stateNumber - 1][];
+                }
+            }
+            // 初期化
+            for (int p = 0; p < alphabetSize; p++)
+            {
+                for (int i = 0; i < stateNumber - 1; i++)
+                {
+                    for (int j = 0; j < stateNumber - 1; j++)
+                    {
+                        blockLogViterbi[p][i][j] = System.Math.Log(emissionProbability[p][i]) + System.Math.Log(transitionProbability[i + 1][j + 1]);
+                        blockTrace[p][i][j] = new int[] { i };
+                    }
+                }
+            }
+            // 再帰処理
+            for (int t = 2; t <= blockLength; t++)
+            {
+                // 配列の初期化・更新
+                int subpatternNumber = PowerInt(alphabetSize, t);
+                double[][][] previousBlockLogViterbi = blockLogViterbi;
+                int[][][][] previousBlockTrace = blockTrace;
+                blockLogViterbi = new double[subpatternNumber][][];
+                blockTrace = new int[subpatternNumber][][][];
+                for (int p = 0; p < subpatternNumber; p++)
+                {
+                    blockLogViterbi[p] = new double[stateNumber - 1][];
+                    blockTrace[p] = new int[stateNumber - 1][][];
+                    for (int i = 0; i < stateNumber - 1; i++)
+                    {
+                        blockLogViterbi[p][i] = new double[stateNumber - 1];
+                        blockTrace[p][i] = new int[stateNumber - 1][];
+                        for (int j = 0; j < stateNumber - 1; j++)
+                        {
+                            blockTrace[p][i][j] = new int[t];
+                            // 前回のブロックでのトレースバック結果を引き継ぐ。
+                            System.Array.Copy(previousBlockTrace[p / alphabetSize][i][j], blockTrace[p][i][j], t - 1);
+                        }
+                    }
+                }
+                // 各部分文字列について、
+                for (int p = 0; p < subpatternNumber; p++)
+                {
+                    int letter = p % alphabetSize;
+                    // From state i.
+                    for (int i = 0; i < stateNumber - 1; i++)
+                    {
+                        // To state j.
+                        for (int j = 0; j < stateNumber - 1; j++)
+                        {
+                            double max = double.NegativeInfinity;
+                            int argmax = -1;
+                            // Via state k.
+                            for (int k = 0; k < stateNumber - 1; k++)
+                            {
+                                double tmp = System.Math.Log(emissionProbability[letter][j]) + System.Math.Log(transitionProbability[k + 1][j + 1]) + previousBlockLogViterbi[p / alphabetSize][i][k];
+                                if (tmp > max)
+                                {
+                                    max = tmp;
+                                    argmax = k;
+                                }
+                            }
+                            blockLogViterbi[p][i][j] = max;
+                            blockTrace[p][i][j][t - 1] = argmax;
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
