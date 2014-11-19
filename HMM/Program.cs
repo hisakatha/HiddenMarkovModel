@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Linq;
-//using System.Collections.Generic;
+using System.Collections.Generic;
 //using System.Text;
 
 //using System.Array;
@@ -15,9 +15,7 @@ namespace HMM
     class Program
     {
         // エラー時に表示する利用方法の文字列。
-        static readonly string usage = "Usage: command [-l block-length] {parameter file} {FASTA file(s)}..."
-            + Environment.NewLine + "Options:" + Environment.NewLine + "\t-l block-length\t\tDo acceleration by compression with specified block length."
-            + Environment.NewLine + "\t\t\t\tIf not specified, no compressoins.";
+        static readonly string usage = "Usage: command {parameter file} {FASTA file(s)}...";
 
         /// <summary>
         /// 1つ目のファイルパスからHMMのパラメータを読み取り、HMMを作成し、2つ目のfasta形式のファイルパスから観測文字列を読み取る。
@@ -26,28 +24,17 @@ namespace HMM
         /// <param name="args">コマンドライン引数</param>
         static void Main(string[] args)
         {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("Wrong usage.");
+                Console.WriteLine(usage);
+                return;
+            }
             // HMMクラスの変数を宣言。
             HMM model;
             int index = 0;
             int blockLength = 1;
-            if (args[index].CompareTo("-l") == 0)
-            {
-                try
-                {
-                    blockLength = int.Parse(args[index + 1]);
-                }
-                catch (FormatException e)
-                {
-                    Console.WriteLine(e.Message + ": block-lengthには数を入力してください。");
-                    Console.WriteLine(usage);
-                    return;
-                }
-                if (blockLength <= 0)
-                {
-                    Console.WriteLine("Warning: block-length should be positive.: No compressions.");
-                }
-                index += 2;
-            }
+            
             // try-catch文
             // 例外発生時にcatch文が実行される。
             try
@@ -77,31 +64,62 @@ namespace HMM
             {
                 return;
             }
+            
+            // 各塩基配列についてブロック長を大きくしながら複数回時間計測を行う。
+            // 1条件での繰り返し数
+            const int repeatNumber = 10;
+            // 通常のViterbiアルゴリズムでの実行時間を格納する配列。
+            long[] normalTimes = new long[sequenceArray.Length];
+            // 圧縮を用いたViterbiアルゴリズムでの実行時間を格納するQueue。
+            Queue<long>[] times = new Queue<long>[sequenceArray.Length];
+            for (int i = 0; i < times.Length; i++)
+            {
+                times[i] = new Queue<long>();
+            }
+            // .NETに用意されているStopwatchクラスのインスタンスを生成する。
+            System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
+            for (int i = 0; i < sequenceArray.Length; i++)
+            {
+                timer.Reset();
+                for (int t = 0; t < repeatNumber; t++)
+                {
+                    timer.Start();
+                    model.Viterbi(sequenceArray[i]);
+                    timer.Stop();
+                }
+                normalTimes[i] = timer.ElapsedMilliseconds;
+                
+                int maxBlockLength = (int)System.Math.Ceiling(System.Math.Log(sequenceArray[i].Length, model.AlphabetSize));
+                for (blockLength = 2; blockLength <= maxBlockLength; blockLength++)
+                {
+                    timer.Reset();
+                    for (int t = 0; t < repeatNumber; t++)
+                    {
+                        timer.Start();
+                        model.ViterbiWithCompression(sequenceArray[i], blockLength);
+                        timer.Stop();
+                    }
+                    times[i].Enqueue(timer.ElapsedMilliseconds);
+                }
+            }
 
-            // Baum-Welchにおいて対数尤度や学習前の隠れ状態推定列の表示設定。
-            const bool verbose = true;
-            if (verbose)
+            while (times.Any((Queue<long> element) => (element.Count > 0)))
             {
                 for (int i = 0; i < sequenceArray.Length; i++)
                 {
-                    Console.WriteLine("An estimated sequence of hidden states for input{0} :", i + 1);
-                    PrintArray(model.Viterbi(sequenceArray[i], false));
-                    Console.WriteLine("Compressed.");
-                    PrintArray(model.ViterbiWithCompression(sequenceArray[i], blockLength, true));
+                    if (times[i].Count > 0)
+                    {
+                        Console.Write("{0:G5}", (double)normalTimes[i] / (double)times[i].Dequeue());
+                    }
+                    else
+                    {
+                        Console.Write("N/A");
+                    }
+                    Console.Write("\t");
                 }
+                Console.WriteLine("");
             }
-            /*
-            Console.WriteLine("Baum-Welch algorithm start..." + (verbose ? " (Change of sum of ln P(x^j) are shown.)" : ""));
-            model.BaumWelch(sequenceArray, 0.0001, verbose);
-            Console.WriteLine("Result parameters are below:");
-            PrintMatrix<double>(model.TransitionProbability);
-            PrintMatrix<double>(model.EmissionProbability);
-            for (int i = 0; i < sequenceArray.Length; i++)
-            {
-                Console.WriteLine("An estimated sequence of hidden states for input{0} :", i + 1);
-                PrintArray(model.Viterbi(sequenceArray[i]));
-            }
-             */
+
 #if DEBUG
             Console.ReadKey(true);
 #endif
@@ -719,7 +737,7 @@ namespace HMM
                 }
             }
 
-            // 隠れ状態推定列の生成（トレースバック）  
+            // 隠れ状態推定列の生成（トレースバック）
             hiddenState[emission.Length] = finalState;
             for (int t = emission.Length - 1; t >= 0; t--)
             {
